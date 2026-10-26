@@ -123,35 +123,73 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+// Esquinas fijas de scatter (pasillos reales del MAZE).
+const SCATTER_CORNERS = {
+  pinky: { x: 26, y: 1 },  // arriba derecha
+  inky:  { x: 26, y: 29 }, // abajo derecha
+  clyde: { x: 1, y: 29 },  // abajo izquierda
+};
+
+// Celda objetivo por personalidad.
+//   blinky: persigue a Pacman siempre (ignora el ciclo scatter/chase).
+//   pinky:  4 celdas delante de Pacman segun su dir actual.
+//   inky:   doble del vector desde Blinky con pivote en 2 celdas delante de Pacman.
+//   clyde:  persigue a Pacman si esta lejos (Manhattan >= 8); si no, su esquina.
+// Los demas phantomas respetan la fase global: en scatter van a su esquina.
+function pickTarget( g, game ) {
+  const p = game.pacman;
+  const px = Math.round( p.x );
+  const py = Math.round( p.y );
+
+  if ( g.kind === 'blinky' ) return { x: px, y: py };
+
+  if ( game.mode.phase === 'scatter' ) return SCATTER_CORNERS[ g.kind ];
+
+  if ( g.kind === 'pinky' ) {
+    const d = DIRS[ p.dir ];
+    return { x: px + d.x * 4, y: py + d.y * 4 };
+  }
+
+  if ( g.kind === 'inky' ) {
+    const d = DIRS[ p.dir ];
+    const ax = px + d.x * 2; // pivote: 2 celdas delante de Pacman
+    const ay = py + d.y * 2;
+    const b = game.ghosts[ 0 ]; // Blinky, aunque siga en la pen
+    return {
+      x: ax + ( ax - Math.round( b.x ) ),
+      y: ay + ( ay - Math.round( b.y ) ),
+    };
+  }
+
+  // clyde
+  const dist = Math.abs( g.x - px ) + Math.abs( g.y - py );
+  if ( dist >= 8 ) return { x: px, y: py };
+  return SCATTER_CORNERS[ g.kind ];
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
-  const p = game.pacman;
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
   );
   // Sin salida (callejon): permitir el giro de 180.
-  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+  const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  const target = pickTarget( g, game );
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - target.x ) + Math.abs( ny - target.y );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
+  g.dir = best;
 }
 
 function moveGhost( game, g ) {
