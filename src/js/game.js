@@ -233,7 +233,10 @@ function resetPositions( game ) {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.defer = GHOST_STARTS[ i ].defer;
+    g.mode = 'chase';
   } );
+  game.mode = { phase: 'scatter', timer: MODE_DURATION };
 }
 
 function collides( a, b ) {
