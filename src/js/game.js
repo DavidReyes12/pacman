@@ -212,6 +212,13 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ OPPOSITE[ g.dir ] ];
 
+  // Frightened: huida aleatoria clasica — direccion valida al azar entre las
+  // que no son 180; solo si esta en callejon invierte.
+  if ( g.mode === 'frightened' ) {
+    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    return;
+  }
+
   const target = pickTarget( g, game );
   let best = choices[ 0 ];
   let bestDist = Infinity;
@@ -231,6 +238,8 @@ function decideGhost( game, g ) {
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
+  // Velocidad derivada del modo: frightened va a la mitad.
+  const speed = g.mode === 'frightened' ? FRIGHTENED_SPEED : GHOST_SPEED;
 
   // Esperando su turno para salir de la pen: se queda quieto.
   if ( g.defer > 0 ) return;
@@ -252,8 +261,8 @@ function moveGhost( game, g ) {
       g.dir = rx < PEN_EXIT.x ? 'right' : rx > PEN_EXIT.x ? 'left' : 'up';
     }
     const d = DIRS[ g.dir ];
-    g.x += d.x * g.speed;
-    g.y += d.y * g.speed;
+    g.x += d.x * speed;
+    g.y += d.y * speed;
     wrapTunnel( g, width );
     return;
   }
@@ -266,8 +275,8 @@ function moveGhost( game, g ) {
   }
 
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  g.x += d.x * speed;
+  g.y += d.y * speed;
   wrapTunnel( g, width );
 }
 
