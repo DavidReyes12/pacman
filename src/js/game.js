@@ -89,14 +89,19 @@ function aligned( v ) {
 
 // Una celda es muro para la entidad que se mueve (pacman u objeto ghost)?
 //   v === 1 (pared): muro para todos.
-//   v === 3 (puerta): muro para pacman y para todo ghost cuyo mode no sea
-//                     'exiting' — puerta de sentido unico, solo se cruza al salir.
+//   v === 3 (puerta): muro para pacman; transitable para cualquier ghost cuyo
+//                     mode sea 'exiting' (SPEC 02), 'eyes' o 'entering'
+//                     (SPEC 03). Los ghosts se reconocen por tener 'mode'
+//                     (pacman no lo tiene; su kind puede ser 'blinky', etc).
 function isWall( grid, x, y, entity ) {
   if ( y < 0 || y >= grid.length ) return true;
   if ( x < 0 || x >= grid[ 0 ].length ) return true;
   const v = grid[ y ][ x ];
   if ( v === 1 ) return true;
-  if ( v === 3 && !( entity.kind === 'ghost' && entity.mode === 'exiting' ) ) return true;
+  if ( v === 3 && !( 'mode' in entity
+    && ( entity.mode === 'exiting' || entity.mode === 'eyes' || entity.mode === 'entering' ) ) ) {
+    return true;
+  }
   return false;
 }
 
@@ -177,6 +182,9 @@ function pickTarget( g, game ) {
   // Saliendo de la pen: ir hacia la celda sobre la puerta.
   if ( g.mode === 'exiting' ) return PEN_EXIT;
 
+  // Ojos comidos: volver greedy a la celda sobre la puerta de la pen.
+  if ( g.mode === 'eyes' ) return PEN_EXIT;
+
   if ( g.kind === 'blinky' ) return { x: px, y: py };
 
   if ( game.mode.phase === 'scatter' ) return SCATTER_CORNERS[ g.kind ];
@@ -219,6 +227,28 @@ function decideGhost( game, g ) {
     return;
   }
 
+  // eyes: mapa propio de distancias BFS desde PEN_EXIT, precalculado por
+  // partida (lazy). Garantiza llegada sin orbitas — el greedy Manhattan con
+  // el 180 prohibido puede orbitar (riesgo documentado en la spec). La
+  // puerta y el tunel son transitables para este modo.
+  if ( g.mode === 'eyes' ) {
+    const distMap = getDistMap( game );
+    let best = choices[ 0 ];
+    let bestDist = Infinity;
+    for ( const dir of choices ) {
+      const d = DIRS[ dir ];
+      const nx = ( ( g.x + d.x ) + 28 ) % 28;
+      const ny = g.y + d.y;
+      const dist = distMap[ ny ] ? distMap[ ny ][ nx ] : Infinity;
+      if ( dist < bestDist ) {
+        bestDist = dist;
+        best = dir;
+      }
+    }
+    g.dir = best;
+    return;
+  }
+
   const target = pickTarget( g, game );
   let best = choices[ 0 ];
   let bestDist = Infinity;
@@ -235,6 +265,35 @@ function decideGhost( game, g ) {
   g.dir = best;
 }
 
+// BFS desde PEN_EXIT sobre las paredes del grid (muros = 1; puertas 3
+// transitables para 'eyes'). Devuelve dist en celdas hasta (13,11) por cada
+// celda navegable. Se calcula una vez por partida (lazy, cacheado).
+function getDistMap( game ) {
+  if ( game.distMap ) return game.distMap;
+  const grid = game.grid;
+  const height = grid.length;
+  const width = grid[ 0 ].length;
+  const distMap = Array.from( { length: height }, () => Array( width ).fill( Infinity ) );
+  const start = PEN_EXIT;
+  distMap[ start.y ][ start.x ] = 0;
+  const queue = [ start ];
+  while ( queue.length ) {
+    const { x, y } = queue.shift();
+    const dist = distMap[ y ][ x ] + 1;
+    for ( const key of Object.keys( DIRS ) ) {
+      const nx = ( ( x + DIRS[ key ].x ) + width ) % width;
+      const ny = y + DIRS[ key ].y;
+      if ( ny < 0 || ny >= height ) continue;
+      if ( grid[ ny ][ nx ] === 1 ) continue;
+      if ( distMap[ ny ][ nx ] !== Infinity ) continue;
+      distMap[ ny ][ nx ] = dist;
+      queue.push( { x: nx, y: ny } );
+    }
+  }
+  game.distMap = distMap;
+  return distMap;
+}
+
 function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
@@ -244,10 +303,43 @@ function moveGhost( game, g ) {
   // Esperando su turno para salir de la pen: se queda quieto.
   if ( g.defer > 0 ) return;
 
-  // Llega a la salida: pasa a la fase global actual y se integra al juego.
-  if ( g.mode === 'exiting' && aligned( g.x ) && aligned( g.y )
-    && Math.round( g.x ) === PEN_EXIT.x && Math.round( g.y ) === PEN_EXIT.y ) {
-    g.mode = game.mode.phase;
+  // Llega a la celda sobre la puerta:
+  //   exiting  -> integra a la fase ACTIVA: frightened si el timer sigue vivo,
+  //               o la fase global scatter/chase si no. (SPEC 03)
+  //   eyes     -> pasa a 'entering' (baja a la pen por la puerta).
+  if ( aligned( g.x ) && aligned( g.y ) && Math.round( g.x ) === PEN_EXIT.x
+    && Math.round( g.y ) === PEN_EXIT.y ) {
+    if ( g.mode === 'exiting' ) {
+      g.mode = game.frighten.timer > 0 ? 'frightened' : game.mode.phase;
+      return;
+    }
+    if ( g.mode === 'eyes' ) {
+      g.mode = 'entering';
+      return;
+    }
+  }
+
+  // Modo 'entering': script de renacimiento escrito, sin decideGhost.
+  //   1. Desde (13,11): baja por la puerta (13,12) hasta (13,13).
+  //   2. Alineado en fila 13: horizontal hacia la col de su spawn.
+  //   3. Llega al spawn: pasa a 'exiting', que lo saca al instante.
+  if ( g.mode === 'entering' ) {
+    if ( aligned( g.x ) && aligned( g.y ) ) {
+      const rx = Math.round( g.x );
+      const ry = Math.round( g.y );
+      if ( ry < 13 ) g.dir = 'down';
+      else if ( ry === 13 && rx !== g.spawn.x ) {
+        g.dir = rx < g.spawn.x ? 'right' : 'left';
+      } else {
+        g.mode = 'exiting';
+        return;
+      }
+    }
+    const d = DIRS[ g.dir ];
+    g.x += d.x * speed;
+    g.y += d.y * speed;
+    wrapTunnel( g, width );
+    return;
   }
 
   // Modo 'exiting': script de salida escrito, sin decideGhost (greedy no
@@ -341,16 +433,19 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( !collides( game.pacman, g ) ) continue;
-    if ( g.mode === 'frightened' ) eatGhost( game, g );
-    else {
-      game.lives--;
-      if ( game.lives <= 0 ) {
-        game.state = 'lost';
-        return;
-      }
-      resetPositions( game );
-      break;
+    if ( g.mode === 'frightened' ) {
+      eatGhost( game, g );
+      continue;
     }
+    // 'eyes' y 'entering' no son comibles ni matan (fantasmas ya desactivados).
+    if ( g.mode === 'eyes' || g.mode === 'entering' ) continue;
+    game.lives--;
+    if ( game.lives <= 0 ) {
+      game.state = 'lost';
+      return;
+    }
+    resetPositions( game );
+    break;
   }
 
   if ( game.dotsRemaining <= 0 ) game.state = 'won';
