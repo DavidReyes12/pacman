@@ -66,15 +66,25 @@ function drawDoor( ctx, grid ) {
   ctx.stroke();
 }
 
-function drawDots( ctx, grid ) {
+// Dots y pellets de poder. La pellet es mas grande y pulsa con el frame.
+function drawDots( ctx, grid, frame ) {
   ctx.fillStyle = DOT_COLOR;
   for ( let y = 0; y < grid.length; y++ ) {
     for ( let x = 0; x < grid[ 0 ].length; x++ ) {
-      if ( grid[ y ][ x ] !== 2 ) continue;
+      const cell = grid[ y ][ x ];
+      if ( cell !== 2 && cell !== 4 ) continue;
       const { cx, cy } = cellCenter( x, y );
-      ctx.beginPath();
-      ctx.arc( cx, cy, 2.5, 0, Math.PI * 2 );
-      ctx.fill();
+      if ( cell === 2 ) {
+        ctx.beginPath();
+        ctx.arc( cx, cy, 2.5, 0, Math.PI * 2 );
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#ffb897';
+        ctx.beginPath();
+        ctx.arc( cx, cy, 5 + ( Math.sin( frame * 0.15 ) + 1 ) * 1.5, 0, Math.PI * 2 );
+        ctx.fill();
+        ctx.fillStyle = DOT_COLOR;
+      }
     }
   }
 }
@@ -98,10 +108,30 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
+// Colores del frightened: azul normal, blanco en el flash de los ultimos 2s.
+const FRIGHTENED_COLOR = '#2121de';
+const FLASH_COLOR      = '#ffffff';
+
+function drawGhost( ctx, g, color, flash ) {
   const { cx, cy } = cellCenter( g.x, g.y );
   const r = TILE / 2 - 1;
-  const top = cy - r;
+
+  // Modo eyes/entering: solo ojos, sin cuerpo.
+  if ( g.mode === 'eyes' || g.mode === 'entering' ) {
+    drawEyes( ctx, cx, cy, g.dir, 3, 1.5 );
+    return;
+  }
+  if ( flash ) {
+    drawGhostBody( ctx, cx, cy, r, FLASH_COLOR );
+    drawEyes( ctx, cx, cy, g.dir, 2.5, 1.2, '#2121de' );
+    return;
+  }
+  const bodyColor = g.mode === 'frightened' ? FRIGHTENED_COLOR : color;
+  drawGhostBody( ctx, cx, cy, r, bodyColor );
+  drawEyes( ctx, cx, cy, g.dir, 3, 1.5, g.mode === 'frightened' ? '#ffb8ff' : '#0000bb' );
+}
+
+function drawGhostBody( ctx, cx, cy, r, color ) {
   const bottom = cy + r;
   const left = cx - r;
   const right = cx + r;
@@ -117,20 +147,34 @@ function drawGhost( ctx, g, color ) {
   ctx.lineTo( left, bottom );
   ctx.closePath();
   ctx.fill();
+}
 
+function drawEyes( ctx, cx, cy, dir, eyeR, pupilR, pupilColor ) {
   // ojos mirando segun direccion
-  const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
-  const ex = dir.x * 1.6;
-  const ey = dir.y * 1.6;
+  const d = DIRS[ dir ] || { x: 0, y: 0 };
+  const ex = d.x * 1.6;
+  const ey = d.y * 1.6;
   for ( const off of [ -3.5, 3.5 ] ) {
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc( cx + off, cy - 1, 3, 0, Math.PI * 2 );
+    ctx.arc( cx + off, cy - 1, eyeR, 0, Math.PI * 2 );
     ctx.fill();
-    ctx.fillStyle = '#0000bb';
+    ctx.fillStyle = pupilColor;
     ctx.beginPath();
-    ctx.arc( cx + off + ex, cy - 1 + ey, 1.5, 0, Math.PI * 2 );
+    ctx.arc( cx + off + ex, cy - 1 + ey, pupilR, 0, Math.PI * 2 );
     ctx.fill();
+  }
+}
+
+// Numeros flotantes al comer un fantasma (o una pellet, si hubiera).
+function drawPopups( ctx, game ) {
+  ctx.font = '10px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for ( const popup of game.popups ) {
+    const { cx, cy } = cellCenter( popup.x, popup.y );
+    ctx.fillStyle = '#00ffff';
+    ctx.fillText( popup.text, cx, cy - ( POPUP_FRAMES - popup.timer ) * 0.5 );
   }
 }
 
@@ -156,9 +200,15 @@ function draw( ctx, game, frame ) {
 
   drawWalls( ctx, grid );
   drawDoor( ctx, grid );
-  drawDots( ctx, grid );
+  drawDots( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000' ) );
+  game.ghosts.forEach( ( g, i ) => {
+    // Flash blanco los ultimos 2s de frightened (120 frames @60fps).
+    const flash = game.frighten.timer > 0 && game.frighten.timer <= 120 &&
+      Math.floor( game.frighten.timer / 10 ) % 2 === 0;
+    drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', flash );
+  } );
+  drawPopups( ctx, game );
   drawHUD( ctx, game, W );
 }
 

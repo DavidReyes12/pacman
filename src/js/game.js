@@ -123,6 +123,19 @@ function wrapTunnel( a, width ) {
   }
 }
 
+// Re-alinear al multiplo de 0.1 mas cercano tras un cambio de modo. Los modos
+// se mueven a velocidades distintas: frightened usa pasos de 0.05 y el resto
+// de 0.1. Si un ghost cambia de modo desde un multiplo IMPAR de 0.05 (ej.
+// 10.45), sumar pasos de 0.1 ya no lo llevan a un entero nunca mas: aligned()
+// deja de ser true, decideGhost no vuelve a correr y el ghost conserva su dir
+// atraviesando muros hasta escapar del mapa. El reajuste es de 0.05 celda
+// maximo (1px, invisible en pantalla).
+function resnap( g, width ) {
+  g.x = Math.round( g.x * 10 ) / 10;
+  g.y = Math.round( g.y * 10 ) / 10;
+  wrapTunnel( g, width );
+}
+
 function movePacman( game ) {
   const p = game.pacman;
   const grid = game.grid;
@@ -380,6 +393,7 @@ function eatGhost( game, g ) {
   game.score += points;
   game.popups.push( { x: g.x, y: g.y, text: String( points ), timer: POPUP_FRAMES } );
   g.mode = 'eyes';
+  resnap( g, game.grid[ 0 ].length );
 }
 
 function resetPositions( game ) {
@@ -395,6 +409,9 @@ function resetPositions( game ) {
     g.defer = GHOST_STARTS[ i ].defer;
     g.mode = 'chase';
   } );
+  game.frighten.timer = 0;
+  game.frighten.chain = 0;
+  game.popups = [];
   game.mode = { phase: 'scatter', timer: MODE_DURATION };
 }
 
@@ -412,7 +429,10 @@ function update( game ) {
     if ( game.frighten.timer === 0 ) {
       game.frighten.chain = 0;
       for ( const g of game.ghosts ) {
-        if ( g.mode === 'frightened' ) g.mode = game.mode.phase;
+        if ( g.mode === 'frightened' ) {
+          g.mode = game.mode.phase;
+          resnap( g, game.grid[ 0 ].length );
+        }
       }
     }
   } else {
