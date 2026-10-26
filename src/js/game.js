@@ -211,6 +211,23 @@ function moveGhost( game, g ) {
     g.mode = game.mode.phase;
   }
 
+  // Modo 'exiting': script de salida escrito, sin decideGhost (greedy no
+  // garantiza el camino). Opera sobre la fila actual del ghost.
+  //   1. Horizontal hacia la col 13 en su fila de espera.
+  //   2. Alineado en col 13: 'up' por la puerta (13,12) hasta (13,11),
+  //      donde el check de arriba integra al ghost a la fase global.
+  if ( g.mode === 'exiting' ) {
+    if ( aligned( g.x ) && aligned( g.y ) ) {
+      const rx = Math.round( g.x );
+      g.dir = rx < PEN_EXIT.x ? 'right' : rx > PEN_EXIT.x ? 'left' : 'up';
+    }
+    const d = DIRS[ g.dir ];
+    g.x += d.x * g.speed;
+    g.y += d.y * g.speed;
+    wrapTunnel( g, width );
+    return;
+  }
+
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
