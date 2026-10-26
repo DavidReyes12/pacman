@@ -123,6 +123,8 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+const PEN_EXIT = { x: 13, y: 11 }; // celda sobre la puerta de la pen
+
 // Esquinas fijas de scatter (pasillos reales del MAZE).
 const SCATTER_CORNERS = {
   pinky: { x: 26, y: 1 },  // arriba derecha
@@ -140,6 +142,9 @@ function pickTarget( g, game ) {
   const p = game.pacman;
   const px = Math.round( p.x );
   const py = Math.round( p.y );
+
+  // Saliendo de la pen: ir hacia la celda sobre la puerta.
+  if ( g.mode === 'exiting' ) return PEN_EXIT;
 
   if ( g.kind === 'blinky' ) return { x: px, y: py };
 
@@ -196,6 +201,15 @@ function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
 
+  // Esperando su turno para salir de la pen: se queda quieto.
+  if ( g.defer > 0 ) return;
+
+  // Llega a la salida: pasa a la fase global actual y se integra al juego.
+  if ( g.mode === 'exiting' && aligned( g.x ) && aligned( g.y )
+    && Math.round( g.x ) === PEN_EXIT.x && Math.round( g.y ) === PEN_EXIT.y ) {
+    g.mode = game.mode.phase;
+  }
+
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
@@ -228,7 +242,16 @@ function collides( a, b ) {
 
 function update( game ) {
   movePacman( game );
-  game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
+
+  game.mode.timer--;
+  if ( game.mode.timer <= 0 ) switchMode( game );
+  game.ghosts.forEach( ( g ) => {
+    if ( g.defer > 0 ) {
+      g.defer--;
+      if ( g.defer === 0 ) g.mode = 'exiting';
+    }
+    moveGhost( game, g );
+  } );
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
