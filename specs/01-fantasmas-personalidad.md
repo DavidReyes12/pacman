@@ -1,6 +1,6 @@
 # SPEC 01 — Los 4 fantasmas con IA clásica de personalidades
 
-> **Estado:** Approved
+> **Estado:** Implementado
 > **Depende de:** ninguno (primer spec)
 > **Fecha:** 2026-10-26
 > **Objetivo:** Reemplazar los 2 fantasmas actuales por los 4 clásicos (Blinky, Pinky, Inky, Clyde), cada uno con targeting propio, salida escalonada de la pen y ciclo chase/scatter, siendo Blinky el perseguidor agresivo permanente.
