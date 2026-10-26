@@ -1,6 +1,6 @@
 # SPEC 02 — Salida fiable de los fantasmas de la pen (puerta de sentido único)
 
-> **Estado:** Approved
+> **Estado:** Implementado
 > **Depende de:** SPEC 01
 > **Fecha:** 2026-10-26
 > **Objetivo:** Garantizar que los fantasmas salen de la pen por la puerta en fila vertical central y que, una vez fuera, jamás vuelven a entrar, eliminando el bloqueo permanente dentro de la jaula.

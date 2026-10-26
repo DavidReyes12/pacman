@@ -1,6 +1,6 @@
 # SPEC 03 — Pastillas de poder: modo frightened y comer fantasmas
 
-> **Estado:** Approved
+> **Estado:** Implementado
 > **Depende de:** SPEC 01, SPEC 02
 > **Fecha:** 2026-10-26
 > **Objetivo:** Añadir 4 power pellets al laberinto que activan un modo frightened de ~7s durante el cual los fantasmas huyen azules y Pacman puede comerlos, mandándolos como ojos de regreso a la pen para renacer.
