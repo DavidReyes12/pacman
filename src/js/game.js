@@ -14,6 +14,12 @@ const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 const MODE_DURATION = 420;  // 7s @60fps por fase del ciclo
 
+const FRIGHTENED_FRAMES = 420; // 7s @60fps
+const FRIGHTENED_SPEED  = 0.05; // celdas/frame; alinea cada 20
+const POPUP_FRAMES      = 30;   // 0.5s de vida del numero flotante
+
+const POWER_PELLET  = 4;
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -22,7 +28,7 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === POWER_PELLET ) dots++;
 
   return {
     state: 'start',
@@ -44,10 +50,28 @@ function createGame() {
       speed: GHOST_SPEED,
       kind: g.kind,
       defer: g.defer,    // frames restantes para salir de la pen (0 = ya fuera)
-      mode: 'chase',     // 'chase' | 'scatter' | 'exiting'
+      mode: 'chase',     // 'chase' | 'scatter' | 'exiting' | 'frightened'
+                         //                   | 'eyes' | 'entering'
+      spawn: { x: g.x, y: g.y }, // celda de renacimiento tras ser comido
     } ) ),
     mode: { phase: 'scatter', timer: MODE_DURATION }, // ciclo global 7s/7s
+    frighten: { timer: 0, chain: 0 }, // frames restantes; fantasma n comido
+    popups: [], // [{ x, y, text, timer }] numeros flotantes
   };
+}
+
+// Come una pellet de poder ('o'). +50 pts y mete en frightened a los fantasmas
+// que ya salieron (no en defer ni exiting). Reinicia timer y cadena si ya
+// habia un frightened activo.
+function startFrightened( game ) {
+  game.score += 50;
+  game.frighten.timer = FRIGHTENED_FRAMES;
+  game.frighten.chain = 0;
+  for ( const g of game.ghosts ) {
+    if ( g.defer === 0 && g.mode !== 'exiting' && g.mode !== 'eyes' && g.mode !== 'entering' ) {
+      g.mode = 'frightened';
+    }
+  }
 }
 
 // Alterna la fase global del ciclo scatter/chase cada 7s.
@@ -113,6 +137,12 @@ function movePacman( game ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    }
+    // Comer power pellet.
+    if ( grid[ p.y ][ p.x ] === POWER_PELLET ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.dotsRemaining--;
+      startFrightened( game );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, p ) ) return;
@@ -264,15 +294,31 @@ function collides( a, b ) {
 function update( game ) {
   movePacman( game );
 
-  game.mode.timer--;
-  if ( game.mode.timer <= 0 ) switchMode( game );
-  game.ghosts.forEach( ( g ) => {
+  // Congelacion del ciclo scatter/chase: el timer global no corre mientras
+  // haya frightened. Al acabar, retoma la fase en la que estaba.
+  if ( game.frighten.timer > 0 ) {
+    game.frighten.timer--;
+    if ( game.frighten.timer === 0 ) {
+      game.frighten.chain = 0;
+      for ( const g of game.ghosts ) {
+        if ( g.mode === 'frightened' ) g.mode = game.mode.phase;
+      }
+    }
+  } else {
+    game.mode.timer--;
+    if ( game.mode.timer <= 0 ) switchMode( game );
+  }
+  // Popups flotantes: numeros de puntos que caducan por frames.
+  for ( const popup of game.popups ) popup.timer--;
+  game.popups = game.popups.filter( ( popup ) => popup.timer > 0 );
+
+  for ( const g of game.ghosts ) {
     if ( g.defer > 0 ) {
       g.defer--;
       if ( g.defer === 0 ) g.mode = 'exiting';
     }
     moveGhost( game, g );
-  } );
+  }
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
