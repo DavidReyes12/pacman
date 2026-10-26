@@ -280,6 +280,16 @@ function moveGhost( game, g ) {
   wrapTunnel( g, width );
 }
 
+// Come un fantasma frightened: cadena arcade 200/400/800/1600, numero
+// flotante en su posicion y se convierte en ojos rumbo a la pen.
+function eatGhost( game, g ) {
+  game.frighten.chain++;
+  const points = 200 * Math.pow( 2, game.frighten.chain - 1 );
+  game.score += points;
+  game.popups.push( { x: g.x, y: g.y, text: String( points ), timer: POPUP_FRAMES } );
+  g.mode = 'eyes';
+}
+
 function resetPositions( game ) {
   const p = game.pacman;
   p.x = PACMAN_START.x;
@@ -330,7 +340,9 @@ function update( game ) {
   }
 
   for ( const g of game.ghosts ) {
-    if ( collides( game.pacman, g ) ) {
+    if ( !collides( game.pacman, g ) ) continue;
+    if ( g.mode === 'frightened' ) eatGhost( game, g );
+    else {
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
